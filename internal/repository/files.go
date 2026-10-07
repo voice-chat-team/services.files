@@ -28,6 +28,8 @@ type File struct {
 	CreatedAt   time.Time
 }
 
+var ErrNotFound = errors.New("file not found")
+
 type FileRepository struct {
 	pool *pgxpool.Pool
 }
@@ -73,8 +75,9 @@ func (r *FileRepository) GetById(ctx context.Context, id string) (File, error) {
 	file, err := scanFile(row)
 
 	if errors.Is(err, pgx.ErrNoRows) {
-		return File{}, fmt.Errorf("File not found: %s", id)
+		return File{}, ErrNotFound
 	}
+
 	if err != nil {
 		return File{}, fmt.Errorf("get file: %w", err)
 	}
@@ -106,4 +109,39 @@ func (r *FileRepository) GetByIds(ctx context.Context, ids []string) ([]File, er
 	}
 
 	return files, err
+}
+
+func (r *FileRepository) MarkReady(ctx context.Context, id string, size int64, ownerId string) (File, error) {
+	row := r.pool.QueryRow(ctx,
+		`UPDATE files SET status = $1, size_bytes = $2
+		WHERE id = $3 AND ownerId = $4 AND status = $5
+		RETURNING `+fileColumns, StatusReady, size, id, ownerId, StatusPending)
+
+	file, err := scanFile(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return File{}, ErrNotFound
+	}
+
+	if err != nil {
+		return File{}, fmt.Errorf("mark ready: %w", err)
+	}
+
+	return file, nil
+}
+
+func (r *FileRepository) MarkDelete(ctx context.Context, id string, ownerId string) error {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE files SET status = $1
+		WHERE id = $3 AND ownerId = $4 AND status <> $1`,
+		StatusDeleted, id, ownerId)
+
+	if err != nil {
+		return fmt.Errorf("mark delete: %w", err)
+	}
+
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+
+	return nil
 }
