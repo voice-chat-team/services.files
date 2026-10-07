@@ -28,8 +28,6 @@ type File struct {
 	CreatedAt   time.Time
 }
 
-const fileColumns = `id::text, owner_id::text, purpose, status, name, content_type, size_bytes, s3_key, created_at`
-
 type FileRepository struct {
 	pool *pgxpool.Pool
 }
@@ -68,13 +66,9 @@ func (r *FileRepository) Create(ctx context.Context, file File) error {
 }
 
 func (r *FileRepository) GetById(ctx context.Context, id string) (File, error) {
-	row, err := r.pool.Query(ctx,
-		`SELECT * FROM files WHERE id = $1 AND status <> $2`,
+	row := r.pool.QueryRow(ctx,
+		`SELECT `+fileColumns+` FROM files WHERE id = $1 AND status <> $2`,
 		id, StatusDeleted)
-	if err != nil {
-		return File{}, fmt.Errorf("Query files: %w", err)
-	}
-	defer row.Close()
 
 	file, err := scanFile(row)
 
@@ -90,7 +84,7 @@ func (r *FileRepository) GetById(ctx context.Context, id string) (File, error) {
 
 func (r *FileRepository) GetByIds(ctx context.Context, ids []string) ([]File, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT * FROM files WHERE id = ANY($1::uuid[]) AND status <> $2`,
+		`SELECT `+fileColumns+` FROM files WHERE id = ANY($1::uuid[]) AND status <> $2`,
 		ids, StatusDeleted)
 
 	if err != nil {
@@ -112,15 +106,4 @@ func (r *FileRepository) GetByIds(ctx context.Context, ids []string) ([]File, er
 	}
 
 	return files, err
-}
-
-type scanner interface {
-	Scan(dest ...any) error
-}
-
-func scanFile(s scanner) (File, error) {
-	var f File
-	err := s.Scan(&f.ID, &f.OwnerID, &f.Purpose, &f.Status, &f.Name,
-		&f.ContentType, &f.SizeBytes, &f.S3Key, &f.CreatedAt)
-	return f, err
 }
