@@ -91,7 +91,7 @@ func (r *FileRepository) GetByIds(ctx context.Context, ids []string) ([]File, er
 		ids, StatusDeleted)
 
 	if err != nil {
-		return nil, fmt.Errorf("Query files: %w", err)
+		return nil, fmt.Errorf("query files: %w", err)
 	}
 	defer rows.Close()
 
@@ -99,7 +99,7 @@ func (r *FileRepository) GetByIds(ctx context.Context, ids []string) ([]File, er
 	for rows.Next() {
 		f, err := scanFile(rows)
 		if err != nil {
-			return nil, fmt.Errorf("Scan file: %w", err)
+			return nil, fmt.Errorf("scan file: %w", err)
 		}
 		files = append(files, f)
 	}
@@ -108,13 +108,13 @@ func (r *FileRepository) GetByIds(ctx context.Context, ids []string) ([]File, er
 		return nil, fmt.Errorf("iterate files: %w", err)
 	}
 
-	return files, err
+	return files, nil
 }
 
 func (r *FileRepository) MarkReady(ctx context.Context, id string, size int64, ownerId string) (File, error) {
 	row := r.pool.QueryRow(ctx,
 		`UPDATE files SET status = $1, size_bytes = $2
-		WHERE id = $3 AND ownerId = $4 AND status = $5
+		WHERE id = $3 AND owner_id = $4 AND status = $5
 		RETURNING `+fileColumns, StatusReady, size, id, ownerId, StatusPending)
 
 	file, err := scanFile(row)
@@ -132,7 +132,7 @@ func (r *FileRepository) MarkReady(ctx context.Context, id string, size int64, o
 func (r *FileRepository) MarkDelete(ctx context.Context, id string, ownerId string) error {
 	tag, err := r.pool.Exec(ctx,
 		`UPDATE files SET status = $1
-		WHERE id = $3 AND ownerId = $4 AND status <> $1`,
+		WHERE id = $2 AND owner_id = $3 AND status <> $1`,
 		StatusDeleted, id, ownerId)
 
 	if err != nil {

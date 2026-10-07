@@ -8,13 +8,12 @@ import (
 	files_v1 "github.com/voice-chat-team/contracts/gen/go/files/v1"
 	"github.com/voice-chat-team/services.files/internal/config"
 	"github.com/voice-chat-team/services.files/internal/database"
+	"github.com/voice-chat-team/services.files/internal/repository"
+	"github.com/voice-chat-team/services.files/internal/service"
+	"github.com/voice-chat-team/services.files/internal/storage"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
-
-type server struct {
-	files_v1.UnimplementedFileServiceServer
-}
 
 func main() {
 	cfg, err := config.Load()
@@ -38,8 +37,14 @@ func main() {
 		log.Fatalf("listen: %v", err)
 	}
 
+	st, err := storage.New(cfg)
+	if err != nil {
+		log.Fatalf("storage: %v", err)
+	}
+	repo := repository.NewFileRepository(pool)
+
 	s := grpc.NewServer()
-	files_v1.RegisterFileServiceServer(s, &server{})
+	files_v1.RegisterFileServiceServer(s, service.NewFileService(repo, st))
 	reflection.Register(s)
 
 	log.Printf("files service listening on :%s", cfg.GRPCPort)
