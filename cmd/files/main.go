@@ -29,6 +29,10 @@ func main() {
 	}
 	defer pool.Close()
 
+	if err := database.Migrate(ctx, pool); err != nil {
+		log.Fatalf("migrate: %v", err)
+	}
+
 	lis, err := net.Listen("tcp", ":"+cfg.GRPCPort)
 	if err != nil {
 		log.Fatalf("listen: %v", err)
