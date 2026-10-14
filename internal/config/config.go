@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -29,16 +30,33 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("S3_USE_SSL must be true or false: %w", err)
 	}
 
+	secrets := map[string]string{}
+	for _, key := range []string{
+		"DATABASE_URL",
+		"S3_ENDPOINT",
+		"S3_REGION",
+		"S3_ACCESS_KEY",
+		"S3_SECRET_KEY",
+		"S3_BUCKET",
+		"S3_PUBLIC_URL",
+	} {
+		value, err := getSecret(key)
+		if err != nil {
+			return nil, err
+		}
+		secrets[key] = value
+	}
+
 	cfg := &Config{
 		GRPCPort:    getEnv("GRPC_PORT", "5060"),
-		DatabaseURL: os.Getenv("DATABASE_URL"),
-		S3Endpoint:  os.Getenv("S3_ENDPOINT"),
-		S3Region:    getEnv("S3_REGION", "ru-1"),
-		S3AccessKey: os.Getenv("S3_ACCESS_KEY"),
-		S3SecretKey: os.Getenv("S3_SECRET_KEY"),
-		S3Bucket:    os.Getenv("S3_BUCKET"),
+		DatabaseURL: secrets["DATABASE_URL"],
+		S3Endpoint:  secrets["S3_ENDPOINT"],
+		S3Region:    secrets["S3_REGION"],
+		S3AccessKey: secrets["S3_ACCESS_KEY"],
+		S3SecretKey: secrets["S3_SECRET_KEY"],
+		S3Bucket:    secrets["S3_BUCKET"],
 		S3UseSSL:    useSSL,
-		S3PublicURL: os.Getenv("S3_PUBLIC_URL"),
+		S3PublicURL: secrets["S3_PUBLIC_URL"],
 	}
 
 	required := map[string]string{
@@ -63,4 +81,23 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// getSecret поддерживает Docker/Swarm secrets: если задана `<KEY>_FILE`
+func getSecret(key string) (string, error) {
+	if v := os.Getenv(key); v != "" {
+		return v, nil
+	}
+
+	path := os.Getenv(key + "_FILE")
+	if path == "" {
+		return "", nil
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read %s_FILE: %w", key, err)
+	}
+
+	return strings.TrimSpace(string(data)), nil
 }
